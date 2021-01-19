@@ -1,10 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace ExpressionDemo
 {
@@ -12,8 +19,10 @@ namespace ExpressionDemo
     {
         static void Main(string[] args)
         {
-            test();
+            v1();
             return;
+            gen();
+
             Console.Write("RegualarProperty\t");
             MeasurePerformance(RegualarProperty);
             Console.Write("Reflection\t");
@@ -31,6 +40,7 @@ namespace ExpressionDemo
             Console.WriteLine("press any key to exit...");
             Console.ReadKey();
         }
+
 
         private static void RegualarProperty(Person p)
         {
@@ -98,7 +108,7 @@ namespace ExpressionDemo
             //}
 
 
-            var zz = new { k = 3, Name = "pop", data = "asfddasf" };
+            var zz = new {k = 3, Name = "pop", data = "asfddasf"};
             /*var list = new List<object>();
 
             for (int i = 0; i < 10; i++)
@@ -121,23 +131,58 @@ namespace ExpressionDemo
             public string Name { get; set; }
         }
 
-        static void test()
+        class Zoo
+        {
+            public int Index { get; set; }
+            public object Animal { get; set; }
+        }
+
+        static void v1()
+        {
+            var dog = new Dog {Id = 1, Name = "aa"};
+            object zoo = new Zoo {Index = 111, Animal = dog};
+            var mbs = zoo.GetType().GetMembers();
+            var mi = RefExpr.SelectMember(mbs, info => info.Name == "Animal");
+        }
+
+        static void gen()
         {
             object d = new Dog
             {
                 Id = 21,
-                Name = "adsf"
+                Name = "app"
             };
-            genericeTest(d);
+            var model = new Zoo
+            {
+                Index = 1,
+                Animal = d,
+            };
+
+            var x = expTest(model, "Data.Id", (int v) => v != 1);
         }
 
-        static void genericeTest<T>(T t)
+        static bool expTest<T, V>(T t, string filedName, Func<V, bool> func)
         {
-            var type = t.GetType();
-            var arg = Expression.Parameter(typeof(T), "x");
-            var expr = Expression.Property(Expression.Convert(arg, type), "Id");
-            var compiled = Expression.Lambda<Func<T, int>>(expr, arg).Compile();
-            var value = compiled.Invoke(t);
+            var parameterExpression = Expression.Parameter(typeof(T), "x");
+            Expression expr = parameterExpression;
+            var type = expr.Type;
+
+            var split = filedName.Split('.');
+            V tft = default;
+            for (var i = 0; i < split.Length; i++)
+            {
+                var prop = split[i];
+                if (i == split.Length - 1) // 最后一次是属性
+                {
+                    tft = Expression.Lambda<Func<T, V>>(expr, parameterExpression).Compile().Invoke(t);
+                    break;
+                }
+
+                expr = Expression.Property(Expression.Convert(expr, type), prop);
+                type = Expression.Lambda<Func<T, object>>(expr, parameterExpression).Compile().Invoke(t).GetType();
+            }
+
+            return func.Invoke(tft);
         }
 
         static IEnumerable<T> CacheCompiledExpression<T, FieldType>(IEnumerable<T> collections, string fieldName,
@@ -206,7 +251,7 @@ namespace ExpressionDemo
             Stopwatch watch = new Stopwatch();
             watch.Start();
 
-            action(new Person() { Name = "Test" });
+            action(new Person() {Name = "Test"});
 
             watch.Stop();
             Console.WriteLine(watch.ElapsedMilliseconds);

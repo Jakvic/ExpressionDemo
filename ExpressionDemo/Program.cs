@@ -1,27 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
-using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 
 namespace ExpressionDemo
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             v1();
-            return;
             gen();
+            return;
 
             Console.Write("RegualarProperty\t");
             MeasurePerformance(RegualarProperty);
@@ -41,22 +34,18 @@ namespace ExpressionDemo
             Console.ReadKey();
         }
 
-
         private static void RegualarProperty(Person p)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
-            for (int i = 0; i < 1000000; i++)
-            {
-                sb.AppendLine(p.Name.ToString());
-            }
+            for (var i = 0; i < 1000000; i++) sb.AppendLine(p.Name);
         }
 
         private static void Reflection(Person p)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
-            for (int i = 0; i < 1000000; i++)
+            for (var i = 0; i < 1000000; i++)
             {
                 var property = p.GetType().GetProperty("Name");
 
@@ -68,21 +57,18 @@ namespace ExpressionDemo
         {
             var property = p.GetType().GetProperty("Name");
 
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
-            for (int i = 0; i < 1000000; i++)
-            {
-                sb.AppendLine(property.GetValue(p, null).ToString());
-            }
+            for (var i = 0; i < 1000000; i++) sb.AppendLine(property.GetValue(p, null).ToString());
         }
 
         private static void CompiledExpression(Person p)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
-            for (int i = 0; i < 1000000; i++)
+            for (var i = 0; i < 1000000; i++)
             {
-                ParameterExpression arg = Expression.Parameter(p.GetType(), "x");
+                var arg = Expression.Parameter(p.GetType(), "x");
                 Expression expr = Expression.Property(arg, "Name");
 
                 var propertyResolver = Expression.Lambda<Func<Person, object>>(expr, arg).Compile();
@@ -93,11 +79,11 @@ namespace ExpressionDemo
 
         private static void CachedCompiledExpression(Person p)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
             object obj = p;
 
-            ParameterExpression arg = Expression.Parameter(obj.GetType(), "x");
+            var arg = Expression.Parameter(obj.GetType(), "x");
             Expression expr = Expression.Property(arg, "Name");
 
             var propertyResolver = Expression.Lambda<Func<Person, string>>(expr, arg).Compile();
@@ -125,19 +111,7 @@ namespace ExpressionDemo
             CacheCompiledExpression(list, "Id", expression);*/
         }
 
-        class Dog
-        {
-            public int Id { get; set; }
-            public string Name { get; set; }
-        }
-
-        class Zoo
-        {
-            public int Index { get; set; }
-            public object Animal { get; set; }
-        }
-
-        static void v1()
+        private static void v1()
         {
             var dog = new Dog {Id = 1, Name = "aa"};
             object zoo = new Zoo {Index = 111, Animal = dog};
@@ -145,7 +119,14 @@ namespace ExpressionDemo
             var mi = RefExpr.SelectMember(mbs, info => info.Name == "Animal");
         }
 
-        static void gen()
+
+        static void V2()
+        {
+            object dog = new Dog {Id = 1, Name = "aa"};
+            object zoo = new Zoo {Index = 111, Animal = dog};
+        }
+
+        private static void gen()
         {
             object d = new Dog
             {
@@ -155,37 +136,121 @@ namespace ExpressionDemo
             var model = new Zoo
             {
                 Index = 1,
-                Animal = d,
+                Animal = d
             };
 
-            var x = expTest(model, "Data.Id", (int v) => v != 1);
+            var sb = new StringBuilder();
+            Console.WriteLine("start !!");
+            Stopwatch sw = new Stopwatch();
+            sw.Restart();
+            for (int i = 1; i < 1000 * 1000; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    var x = expTestCached(model, "Animal.Id", (int v) => v != i);
+                    sb.Append(x);
+                }
+                else
+                {
+                    var y = expTestCached(d, "Name", (string v) => v != i.ToString());
+                    sb.Append(y);
+                }
+            }
+
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            sb.Clear();
+
+            for (int i = 1; i < 1000 * 1000; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    var x = expTest(model, "Animal.Id", (int v) => v != i);
+                    sb.Append(x);
+                }
+                else
+                {
+                    var y = expTest(d, "Name", (string v) => v != i.ToString());
+                    sb.Append(y);
+                }
+            }
+
+            Console.WriteLine(sw.ElapsedMilliseconds);
         }
 
-        static bool expTest<T, V>(T t, string filedName, Func<V, bool> func)
+        private static Dictionary<string, object> cache = new();
+
+
+        private static bool expTestCached<T, V>(T t, string filedName, Func<V, bool> func)
         {
-            var parameterExpression = Expression.Parameter(typeof(T), "x");
-            Expression expr = parameterExpression;
-            var type = expr.Type;
+            var paramExpr = Expression.Parameter(typeof(T), "x");
+
+            Expression expr = paramExpr;
+            var type = t.GetType();
 
             var split = filedName.Split('.');
             V tft = default;
             for (var i = 0; i < split.Length; i++)
             {
                 var prop = split[i];
+                expr = Expression.Property(Expression.Convert(expr, type), prop);
+
                 if (i == split.Length - 1) // 最后一次是属性
                 {
-                    tft = Expression.Lambda<Func<T, V>>(expr, parameterExpression).Compile().Invoke(t);
+                    if (cache.TryGetValue(expr.ToString(), out var action))
+                    {
+                        tft = (action as Func<T, V>).Invoke(t);
+                    }
+                    else
+                    {
+                        tft = Expression.Lambda<Func<T, V>>(expr, paramExpr).Compile().Invoke(t);
+                        cache[expr.ToString()] = Expression.Lambda<Func<T, V>>(expr, paramExpr).Compile();
+                    }
+
                     break;
                 }
 
-                expr = Expression.Property(Expression.Convert(expr, type), prop);
-                type = Expression.Lambda<Func<T, object>>(expr, parameterExpression).Compile().Invoke(t).GetType();
+                if (cache.TryGetValue(type.ToString(), out var o))
+                {
+                    type = (o as Func<T, object>)?.Invoke(t).GetType();
+                }
+                else
+                {
+                    cache[type.ToString()] = Expression.Lambda<Func<T, object>>(expr, paramExpr).Compile();
+                    type = (cache[type.ToString()] as Func<T, object>).Invoke(t).GetType();
+                }
             }
 
             return func.Invoke(tft);
         }
 
-        static IEnumerable<T> CacheCompiledExpression<T, FieldType>(IEnumerable<T> collections, string fieldName,
+        private static bool expTest<T, V>(T t, string filedName, Func<V, bool> func)
+        {
+            var paramExpr = Expression.Parameter(typeof(T), "x");
+
+            Expression expr = paramExpr;
+            var type = t.GetType();
+
+            var split = filedName.Split('.');
+            V tft = default;
+            for (var i = 0; i < split.Length; i++)
+            {
+                var prop = split[i];
+                expr = Expression.Property(Expression.Convert(expr, type), prop);
+
+                if (i == split.Length - 1) // 最后一次是属性
+                {
+                    tft = Expression.Lambda<Func<T, V>>(expr, paramExpr).Compile().Invoke(t);
+                    break;
+                }
+
+                type = Expression.Lambda<Func<T, object>>(expr, paramExpr).Compile().Invoke(t).GetType();
+            }
+
+            return func.Invoke(tft);
+        }
+
+        private static IEnumerable<T> CacheCompiledExpression<T, FieldType>(IEnumerable<T> collections,
+            string fieldName,
             Expression<Func<FieldType, bool>> condition)
         {
             var first = collections.FirstOrDefault();
@@ -198,31 +263,31 @@ namespace ExpressionDemo
 
         private static Func<T, object> GetGetter<T>(T obj, string propertyName)
         {
-            ParameterExpression arg = Expression.Parameter(obj.GetType(), "x");
-            MemberExpression expression = Expression.Property(arg, propertyName);
-            UnaryExpression conversion = Expression.Convert(expression, typeof(object));
+            var arg = Expression.Parameter(obj.GetType(), "x");
+            var expression = Expression.Property(arg, propertyName);
+            var conversion = Expression.Convert(expression, typeof(object));
             return Expression.Lambda<Func<T, object>>(conversion, arg).Compile();
         }
 
-        static Expression<Action<T, string>> GetAction<T>(string fieldName)
+        private static Expression<Action<T, string>> GetAction<T>(string fieldName)
         {
-            ParameterExpression targetExpr = Expression.Parameter(typeof(T), "Target");
-            MemberExpression fieldExpr = Expression.Property(targetExpr, fieldName);
-            ParameterExpression valueExpr = Expression.Parameter(typeof(string), "value");
-            MethodCallExpression convertExpr = Expression.Call(typeof(Convert),
+            var targetExpr = Expression.Parameter(typeof(T), "Target");
+            var fieldExpr = Expression.Property(targetExpr, fieldName);
+            var valueExpr = Expression.Parameter(typeof(string), "value");
+            var convertExpr = Expression.Call(typeof(Convert),
                 "ChangeType", null, valueExpr, Expression.Constant(fieldExpr.Type));
-            UnaryExpression valueCast = Expression.Convert(convertExpr, fieldExpr.Type);
-            BinaryExpression assignExpr = Expression.Assign(fieldExpr, valueCast);
+            var valueCast = Expression.Convert(convertExpr, fieldExpr.Type);
+            var assignExpr = Expression.Assign(fieldExpr, valueCast);
             return Expression.Lambda<Action<T, string>>(assignExpr, targetExpr, valueExpr);
         }
 
         private static void Delegate(Person p)
         {
-            for (int i = 0; i < 1000000; i++)
+            for (var i = 0; i < 1000000; i++)
             {
-                StringBuilder sb = new StringBuilder();
+                var sb = new StringBuilder();
 
-                ParameterExpression arg = Expression.Parameter(p.GetType(), "x");
+                var arg = Expression.Parameter(p.GetType(), "x");
                 Expression expr = Expression.Property(arg, "Name");
 
                 var propertyResolver = Expression.Lambda(expr, arg).Compile();
@@ -233,28 +298,37 @@ namespace ExpressionDemo
 
         private static void CachedDelegate(Person p)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
-            ParameterExpression arg = Expression.Parameter(p.GetType(), "x");
+            var arg = Expression.Parameter(p.GetType(), "x");
             Expression expr = Expression.Property(arg, "Name");
 
             var propertyResolver = Expression.Lambda(expr, arg).Compile();
 
-            for (int i = 0; i < 1000000; i++)
-            {
-                sb.AppendLine(propertyResolver.DynamicInvoke(p).ToString());
-            }
+            for (var i = 0; i < 1000000; i++) sb.AppendLine(propertyResolver.DynamicInvoke(p).ToString());
         }
 
         private static void MeasurePerformance(Action<Person> action)
         {
-            Stopwatch watch = new Stopwatch();
+            var watch = new Stopwatch();
             watch.Start();
 
-            action(new Person() {Name = "Test"});
+            action(new Person {Name = "Test"});
 
             watch.Stop();
             Console.WriteLine(watch.ElapsedMilliseconds);
+        }
+
+        private class Dog
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        private class Zoo
+        {
+            public int Index { get; set; }
+            public object Animal { get; set; }
         }
     }
 

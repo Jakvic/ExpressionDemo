@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
@@ -10,12 +9,12 @@ namespace ExpressionDemo
 {
     internal class Program
     {
+        private static readonly Dictionary<string, object> cache = new();
+
         private static void Main(string[] args)
         {
-            v1();
-            gen();
+            Console.ReadKey();
             return;
-
             Console.Write("RegualarProperty\t");
             MeasurePerformance(RegualarProperty);
             Console.Write("Reflection\t");
@@ -120,7 +119,7 @@ namespace ExpressionDemo
         }
 
 
-        static void V2()
+        private static void V2()
         {
             object dog = new Dog {Id = 1, Name = "aa"};
             object zoo = new Zoo {Index = 111, Animal = dog};
@@ -141,10 +140,9 @@ namespace ExpressionDemo
 
             var sb = new StringBuilder();
             Console.WriteLine("start !!");
-            Stopwatch sw = new Stopwatch();
+            var sw = new Stopwatch();
             sw.Restart();
-            for (int i = 1; i < 1000 * 1000; i++)
-            {
+            for (var i = 1; i < 1000 * 1000; i++)
                 if (i % 2 == 0)
                 {
                     var x = expTestCached(model, "Animal.Id", (int v) => v != i);
@@ -155,29 +153,34 @@ namespace ExpressionDemo
                     var y = expTestCached(d, "Name", (string v) => v != i.ToString());
                     sb.Append(y);
                 }
-            }
 
             Console.WriteLine(sw.ElapsedMilliseconds);
             sb.Clear();
 
-            for (int i = 1; i < 1000 * 1000; i++)
-            {
+            for (var i = 1; i < 1000 * 1000; i++)
                 if (i % 2 == 0)
                 {
-                    var x = expTest(model, "Animal.Id", (int v) => v != i);
-                    sb.Append(x);
+                    if (i > 100)
+                    {
+                        var x = expTest(model, "Animal.Id", (int v) => v != i);
+                        sb.Append(x);
+                    }
+
+                    else
+                    {
+                        model.Animal = "audien";
+                        var z = expTestCached(model, "Animal", (string z) => string.IsNullOrEmpty(z));
+                        sb.Append(z);
+                    }
                 }
                 else
                 {
                     var y = expTest(d, "Name", (string v) => v != i.ToString());
                     sb.Append(y);
                 }
-            }
 
             Console.WriteLine(sw.ElapsedMilliseconds);
         }
-
-        private static Dictionary<string, object> cache = new();
 
 
         private static bool expTestCached<T, V>(T t, string filedName, Func<V, bool> func)

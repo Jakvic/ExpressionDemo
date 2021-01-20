@@ -20,7 +20,7 @@ namespace ExpressionDemo
     /// <summary>
     ///     Helper class to get entity properties and map as BsonValue
     /// </summary>
-    public partial class RefExpr
+    public class RefExpr
     {
         #region CreateInstance
 

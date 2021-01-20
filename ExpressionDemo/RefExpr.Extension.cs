@@ -9,7 +9,7 @@ namespace AnalyzeUI.NodeViews.Media
     ///     Using Expressions is the easy and fast way to create classes, structs, get/set fields/properties. But it not works
     ///     in NET35
     /// </summary>
-    public partial class RefExpr
+    public class RefExpr
     {
         public static CreateObject CreateClass<T>(Type type)
         {
@@ -17,6 +17,7 @@ namespace AnalyzeUI.NodeViews.Media
 
             return Expression.Lambda<CreateObject>(Expression.New(type), pDoc).Compile();
         }
+
         public static CreateObject CreateStruct<T>(Type type)
         {
             var pDoc = Expression.Parameter(typeof(T), "x");

@@ -8,7 +8,7 @@
 
     public class Store
     {
-        public Good Good { get; set; }
+        public Goods Goods { get; set; }
     }
 
     public class Pet
@@ -16,7 +16,7 @@
         public Cat Cat { get; set; }
     }
 
-    public class Good
+    public class Goods
     {
         public int Id { get; set; }
         public string Name { get; set; }

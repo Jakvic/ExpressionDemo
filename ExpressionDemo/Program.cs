@@ -13,6 +13,7 @@ namespace ExpressionDemo
 
         private static void Main(string[] args)
         {
+            RunData.test();
             Console.ReadKey();
             return;
             Console.Write("RegualarProperty\t");
